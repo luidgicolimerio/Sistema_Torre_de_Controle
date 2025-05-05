@@ -11,6 +11,7 @@ typedef struct{
     char  lado;
     int   voando;
     int   pista;
+    int pid;
 } aeronave;
 
 int main(int argc, char *argv[]){
@@ -25,6 +26,8 @@ int main(int argc, char *argv[]){
     int lado = rand()%2;
     int pista = rand()%2;
     pid_t pid = getpid();
+
+    a->pid = pid;
 
     if (lado){ // 1
         a->lado =  'W';
@@ -50,7 +53,9 @@ int main(int argc, char *argv[]){
     while(a->voando){
 
         if ((a->posx > 0.49 && a->posx < 0.51) && (a->posy > 0.49 && a->posy < 0.51)){
+            printf("Aeronave: %d \n POUSOU!\n", pid);
             a->voando = 0;
+            exit(0);
         }
         if (!(a->posx > 0.49 && a->posx < 0.51)){
             if (a->posx > 0.5){
@@ -70,9 +75,5 @@ int main(int argc, char *argv[]){
         sleep(1);
         printf("Aeronave: %d / posx: %.2f  posy: %.2f\n", pid, a->posx, a->posy);
     }
-
-    
-    printf("Aeronave: %d \n POUSOU!\n", pid);
-
     exit(0);
 }

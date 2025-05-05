@@ -19,6 +19,7 @@ aeronaves Ce E)
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <math.h>
 
 #define SHM_KEY_1 1234
 #define SHM_KEY_2 7890
@@ -26,26 +27,62 @@ aeronaves Ce E)
 #define SHM_KEY_4 2314
 #define SHM_KEY_5 3615
 
+#define QTD_AERONAVE 5
+
 typedef struct{
     float posx;
     float posy;
     char  lado;
     int   voando;
     int   pista;
+    int pid;
 } aeronave;
+
+int processos_ativos;
+int shm_ids[QTD_AERONAVE];
+
+int busca_pid(int pid, pid_t* pids) {
+    for (int i = 0; i < processos_ativos; i++) {
+        if (pids[i] == pid) {
+            return i;  // encontrado
+        }
+    }
+    return -1;
+}
+
+int verifica_colisao(aeronave* a1,aeronave* a2, pid_t* pids, int id){
+    float distancia_x = fabsf(a1->posx - a2->posx);
+    float distancia_y = fabsf(a1->posy - a2->posy);
+    if (!(a1->voando)){
+        int ind = busca_pid(a1->pid, pids);
+        kill(a1->pid, SIGKILL);
+        if(ind != -1){
+            int temp = pids[processos_ativos];
+            pids[processos_ativos] = pids[ind];
+            pids[ind] = temp;
+            processos_ativos--;
+        }
+    }
+    else if((distancia_y < 0.01) && (distancia_x < 0.01) && (a1->lado == a2->lado) && (a1->pista == a2->pista)){
+        return 1;
+    } else if((distancia_x < 0.01) && (a1->lado == a2->lado) && (a1->pista == a2->pista)){
+        return 2;
+    }
+    return 0;
+}
 
 int main() {
     int i = 0;
 
-    pid_t pids[5];
-    int shm_keys[5] = {SHM_KEY_1, SHM_KEY_2, SHM_KEY_3, SHM_KEY_4, SHM_KEY_5};
-    int shm_ids[5];
-    aeronave* as[5];
+    pid_t pids[QTD_AERONAVE];
+    int shm_keys[QTD_AERONAVE] = {SHM_KEY_1, SHM_KEY_2, SHM_KEY_3, SHM_KEY_4, SHM_KEY_5};
+
+    aeronave* as[QTD_AERONAVE];
 
     for (int i = 0; i < 5; i++) {
         pids[i] = fork();
-        shmget(shm_keys[i], sizeof(aeronave), IPC_CREAT | 0666);
-        as[i] = (aeronave*) shmat(shm_ids[i], NULL, 0);
+        shm_ids[i] = shmget(shm_keys[i], sizeof(aeronave), IPC_CREAT | 0666);
+        as[i] = (aeronave*)shmat(shm_ids[i], NULL, 0);
         if (pids[i] == 0) {
             char key[10];
             snprintf(key, sizeof(key), "%d", shm_keys[i]);
@@ -59,40 +96,37 @@ int main() {
         kill(pids[i], SIGSTOP);
     }
     
+    int colidiu;
+    processos_ativos = QTD_AERONAVE;
+    while(processos_ativos > 0) {
+        printf("\nAeronaves no ar: %d\n", processos_ativos);
+        if (processos_ativos == 0){
+            break;
+        }
+        for (int i = 0;i<processos_ativos; i++){
+            kill(pids[i], SIGCONT);
+            sleep(1);
+            kill(pids[i], SIGSTOP);
+        }
 
-    for (int i = 0; i < 5; i++) {
-        kill(pids[0], SIGCONT);
-        sleep(1);
-        kill(pids[1], SIGCONT);
-        sleep(1);
-        kill(pids[2], SIGCONT);
-        sleep(1);
-        kill(pids[3], SIGCONT);
-        sleep(1);
-        kill(pids[4], SIGCONT);
-        sleep(1);
-        kill(pids[0], SIGSTOP);
-        kill(pids[1], SIGSTOP);
-        kill(pids[2], SIGSTOP);
-        kill(pids[3], SIGSTOP);
-        kill(pids[4], SIGSTOP);
+        for (int j = 0; j<QTD_AERONAVE; j++){
+            for (int k = 0; k<QTD_AERONAVE; k++){
+                if (j == k){
+                    continue;
+                }
+                colidiu = verifica_colisao(as[j], as[k], pids, j);
+                if (colidiu == 1){
+                    printf("COLISAO!\nAs aeronaves %d e %d colidiram!\n", as[j]->pid, as[k]->pid);
+                }else if(colidiu == 2){
+                    printf("Alerta!\nAs aeronaves %d e %d estão em rotas de colisão!\n", as[j]->pid, as[k]->pid);
+                    //tratar com sinais aeronaves em rota de colisão
+                }
+            }
+        }
     }
-    kill(pids[0], SIGKILL);
-    kill(pids[1], SIGKILL);
-    kill(pids[2], SIGKILL);
-    kill(pids[3], SIGKILL);
-    kill(pids[4], SIGKILL);
-
-    wait(NULL);
-    wait(NULL);
-    wait(NULL);
-    wait(NULL);
-    wait(NULL);
 
     printf("Processos finalizados\n");
-
     
-    shmdt(as[0]);
     shmdt(as[1]);
     shmdt(as[2]);
     shmdt(as[3]);
