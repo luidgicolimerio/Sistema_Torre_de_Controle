@@ -41,11 +41,10 @@ typedef struct{
     int status;
 } aeronave;
 
-int* processos_ativos;
 int shm_ids[QTD_AERONAVE];
 
-int busca_pid(int pid, pid_t* pids) {
-    for (int i = 0; i < *processos_ativos; i++) {
+int busca_pid(int processos_ativos, int pid, pid_t* pids) {
+    for (int i = 0; i < processos_ativos; i++) {
         if (pids[i] == pid) {
             return i;  // encontrado
         }
@@ -56,24 +55,25 @@ int busca_pid(int pid, pid_t* pids) {
 int verifica_colisao(aeronave* a1,aeronave* a2, pid_t* pids, int id){
     float distancia_x = fabsf(a1->posx - a2->posx);
     float distancia_y = fabsf(a1->posy - a2->posy);
-    if (!(a1->voando)){
-        int ind = busca_pid(a1->pid, pids);
-        kill(a1->pid, SIGKILL);
-        if(ind != -1){
-            int temp = pids[*processos_ativos - 1];
-            pids[*processos_ativos - 1] = pids[ind];
-            pids[ind] = temp;
-
-            // pids[ind] = pids[*processos_ativos - 1];
-            // pids[*processos_ativos - 1] = 0;
-        }
-    }
-    else if((distancia_y < 0.01) && (distancia_x < 0.01) && (a1->lado == a2->lado) && (a1->pista == a2->pista)){
+    if((distancia_y < 0.01) && (distancia_x < 0.01) && (a1->lado == a2->lado) && (a1->pista == a2->pista)){
         return 1;
     } else if((distancia_x < 0.01) && (a1->lado == a2->lado) && (a1->pista == a2->pista)){
         return 2;
     }
     return 0;
+}
+
+int verifica_pouso(int processos, aeronave** as, pid_t* pids){
+    for(int i = 0; i<processos; i++){
+        if(as[i]->voando == 0){
+            int ind = busca_pid(processos, as[i]->pid, pids);
+            int temp = pids[processos-1];
+            pids[processos - 1] = pids[ind];
+            pids[ind] = temp;
+            processos--;
+        }
+    }
+    return processos;
 }
 
 
@@ -85,12 +85,11 @@ int main() {
 
     int shm_id = shmget(SHM_KEY_P, sizeof(int), IPC_CREAT | 0666);
 
-    processos_ativos = (int*)shmat(shm_id, NULL, 0);
-    *processos_ativos = QTD_AERONAVE;
+    int processos_ativos = QTD_AERONAVE;
 
     aeronave* as[QTD_AERONAVE];
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < QTD_AERONAVE; i++) {
         pids[i] = fork();
         shm_ids[i] = shmget(shm_keys[i], sizeof(aeronave), IPC_CREAT | 0666);
         as[i] = (aeronave*)shmat(shm_ids[i], NULL, 0);
@@ -108,44 +107,45 @@ int main() {
     }
     
     int colidiu;
-    while(*processos_ativos > 0) {
-        printf("\nAeronaves no ar: %d\n", *processos_ativos);
+    while(processos_ativos > 0) {
+        printf("\nAeronaves no ar: %d\n", processos_ativos);
 
-        for(int i=0; i<*processos_ativos; i++){
+        for(int i=0; i<processos_ativos; i++){
             kill(pids[i], SIGCONT);
             sleep(1);
             kill(pids[i], SIGSTOP);
+            processos_ativos = verifica_pouso(processos_ativos, as, pids);
         }
 
         int troca = 1;
-        for (int j = 0; j<QTD_AERONAVE; j++){
-            for (int k = 0; k<QTD_AERONAVE; k++){
+        for (int j = 0; j<processos_ativos; j++){
+            for (int k = 0; k<processos_ativos; k++){
                 if (j == k){
                     continue;
                 }
                 colidiu = verifica_colisao(as[j], as[k], pids, j);
                 if (colidiu == 1){
                     printf("COLISAO!\nAs aeronaves %d e %d colidiram!\n", as[j]->pid, as[k]->pid);
-                    kill(as[j]->pid, SIGKILL);
+                    // kill(as[j]->pid, SIGKILL);
                 }else if(colidiu == 2){
                     printf("Alerta!\nAs aeronaves %d e %d estão em rotas de colisão!\n", as[j]->pid, as[k]->pid);
-                    for(int t = 0; t<QTD_AERONAVE; t++){
-                        if (t == k)
-                            continue;
-                        if((as[j]->status == 0) && (as[t]->status == 0)){ // Nenhuma das duas entrou em espera
-                            if(as[j]->pista == as[t]->pista){
-                                if(as[t]->prioridade > as[j]->prioridade)
-                                    kill(as[j]->pid, SIGUSR1);
-                                else
-                                    kill(as[t]->pid, SIGUSR1);
-                                troca = 0;
-                                break;
-                            }
-                        }
-                    }
-                    if(troca){
-                        kill(as[j]->pid, SIGUSR2);
-                    }
+                    // for(int t = 0; t<QTD_AERONAVE; t++){
+                    //     if (t == k)
+                    //         continue;
+                    //     if((as[j]->status == 0) && (as[t]->status == 0)){ // Nenhuma das duas entrou em espera
+                    //         if(as[j]->pista == as[t]->pista){
+                    //             if(as[t]->prioridade > as[j]->prioridade)
+                    //                 kill(as[j]->pid, SIGUSR1);
+                    //             else
+                    //                 kill(as[t]->pid, SIGUSR1);
+                    //             troca = 0;
+                    //             break;
+                    //         }
+                    //     }
+                    // }
+                    // if(troca){
+                    //     kill(as[j]->pid, SIGUSR2);
+                    // }
                 }
             }
         }

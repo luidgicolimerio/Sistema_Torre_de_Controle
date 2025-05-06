@@ -6,8 +6,6 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-#define SHM_KEY_P 5162
-
 typedef struct{ //Informações de Controle = Tabela PCB
     float posx;
     float posy;
@@ -61,9 +59,6 @@ int main(int argc, char *argv[]){
 
     a = (aeronave*)shmat(shm_id, NULL, 0);
 
-    int shm_id_p = shmget(SHM_KEY_P, sizeof(int), 0666);
-    processos_ativos = (int*)shmat(shm_id_p, NULL, 0);
-
     a->voando = 1;
     a->prioridade = 0;
     a->status = 0;
@@ -100,7 +95,6 @@ int main(int argc, char *argv[]){
         if ((a->posx > 0.49 && a->posx < 0.51) && (a->posy > 0.49 && a->posy < 0.51)){
             printf("Aeronave: %d \n POUSOU!\n", pid);
             a->voando = 0;
-            processos_ativos = processos_ativos - 1;
             exit(0);
         }
         if (!(a->posx > 0.49 && a->posx < 0.51)){
