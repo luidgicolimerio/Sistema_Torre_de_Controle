@@ -21,6 +21,7 @@ aeronaves Ce E)
 #include <sys/stat.h>
 #include <math.h>
 
+// Automatizar criação de chaves
 #define SHM_KEY_1 1234
 #define SHM_KEY_2 7890
 #define SHM_KEY_3 4554
@@ -28,7 +29,7 @@ aeronaves Ce E)
 #define SHM_KEY_5 3615
 #define SHM_KEY_P 5162
 
-#define QTD_AERONAVE 5
+#define QTD_AERONAVE 10
 
 typedef struct{
     float posx;
@@ -78,8 +79,6 @@ int verifica_pouso(int processos, aeronave** as, pid_t* pids){
 
 
 int main() {
-    int i = 0;
-
     pid_t pids[QTD_AERONAVE];
     int shm_keys[QTD_AERONAVE] = {SHM_KEY_1, SHM_KEY_2, SHM_KEY_3, SHM_KEY_4, SHM_KEY_5};
 
@@ -114,12 +113,12 @@ int main() {
             kill(pids[i], SIGCONT);
             sleep(1);
             kill(pids[i], SIGSTOP);
-            processos_ativos = verifica_pouso(processos_ativos, as, pids);
         }
-
+        sleep(1);
+        processos_ativos = verifica_pouso(processos_ativos, as, pids);
         int troca = 1;
         for (int j = 0; j<processos_ativos; j++){
-            for (int k = 0; k<processos_ativos; k++){
+            for (int k = j; k<processos_ativos; k++){
                 if (j == k){
                     continue;
                 }
@@ -129,23 +128,42 @@ int main() {
                     // kill(as[j]->pid, SIGKILL);
                 }else if(colidiu == 2){
                     printf("Alerta!\nAs aeronaves %d e %d estão em rotas de colisão!\n", as[j]->pid, as[k]->pid);
-                    // for(int t = 0; t<QTD_AERONAVE; t++){
-                    //     if (t == k)
-                    //         continue;
-                    //     if((as[j]->status == 0) && (as[t]->status == 0)){ // Nenhuma das duas entrou em espera
-                    //         if(as[j]->pista == as[t]->pista){
-                    //             if(as[t]->prioridade > as[j]->prioridade)
-                    //                 kill(as[j]->pid, SIGUSR1);
-                    //             else
-                    //                 kill(as[t]->pid, SIGUSR1);
-                    //             troca = 0;
-                    //             break;
-                    //         }
-                    //     }
-                    // }
-                    // if(troca){
-                    //     kill(as[j]->pid, SIGUSR2);
-                    // }
+                    int tr = 1;
+                    int ind = -1;
+                    for(int t = 0; t<QTD_AERONAVE; t++){
+                        if (t == k)
+                            continue;
+                        if(as[t]->lado != as[j]->lado)  //Verifica pois as pistas dos lado W são diferntes da do E
+                            continue;
+                        if((as[j]->status == 0) && (as[t]->status == 0)){ // Nenhuma das duas entrou em espera
+                            if(as[j]->pista != as[t]->pista){
+                                tr = 0;
+                            }
+                            else{
+                                if(tr){
+                                    tr = 1;
+                                }
+                                ind = j;
+                            }
+                                // if(as[t]->prioridade > as[j]->prioridade)
+                                //     kill(as[j]->pid, SIGUSR1);
+                                // else
+                                //     kill(as[t]->pid, SIGUSR1);
+                                // troca = 0;
+                                // break;
+                            
+                        }
+                    }
+                    if(tr){
+                        kill(as[j]->pid, SIGUSR2);
+                    }
+                    else{
+                        if(as[ind]->prioridade > as[j]->prioridade)
+                             kill(as[j]->pid, SIGUSR1);
+                        else
+                             kill(as[ind]->pid, SIGUSR1);
+                                // troca = 0;
+                    }
                 }
             }
         }
