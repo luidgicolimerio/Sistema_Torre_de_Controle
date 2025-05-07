@@ -1,27 +1,67 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <time.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-typedef struct{
+typedef struct{ //Informações de Controle = Tabela PCB
     float posx;
     float posy;
     char  lado;
     int   voando;
     int   pista;
     int pid;
+    int prioridade;
+    int status;
 } aeronave;
+
+aeronave* a;
+int* processos_ativos;
+
+void us1Handler(int sinal)
+{
+    a->prioridade++;
+    a->status = 1;
+    printf("Aeronave: %d Em espera\n", a->pid);
+    sleep(2);
+    a->status = 0;
+
+}
+void us2tHandler(int sinal)
+{
+    if(a->lado == 'W'){
+        if (a->pista == 18){
+            a->pista = 3;
+        } else {
+            a->pista = 18;;
+        }
+    } else {
+        if (a->pista == 27){
+            a->pista = 6;
+        } else {
+            a->pista = 27;;
+        }
+    }
+    printf("Aeronave: %d Trocou para a pista: #%d\n", a->pid, a->pista);
+}
 
 int main(int argc, char *argv[]){
     srand(time(NULL) + getpid()); // garante valores diferentes
 
     int shm_key = atoi(argv[1]);
     int shm_id = shmget(shm_key, sizeof(aeronave), 0666);
+    void (*p)(int);
 
-    aeronave* a = (aeronave*)shmat(shm_id, NULL, 0);
+    p = signal(SIGUSR1, us1Handler);
+    p = signal(SIGUSR2, us2tHandler);
+
+    a = (aeronave*)shmat(shm_id, NULL, 0);
+
     a->voando = 1;
+    a->prioridade = 0;
+    a->status = 0;
 
     int lado = rand()%2;
     int pista = rand()%2;
